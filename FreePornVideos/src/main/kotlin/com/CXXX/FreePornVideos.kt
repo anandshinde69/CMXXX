@@ -128,10 +128,13 @@ class FreePornVideos : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data).document
+        var found = false
+
         document.select("video source").forEach { res ->
             val srcUrl = res.attr("src")
             val response = app.get(srcUrl, allowRedirects = false)
             val finalUrl = response.headers["location"] ?: srcUrl
+            found = true
             callback(
                 newExtractorLink(
                     source = "FPV",
@@ -145,7 +148,41 @@ class FreePornVideos : MainAPI() {
             )
         }
 
-        return true
+        if (!found) {
+            val candidates = document.select("iframe, a, video, source").mapNotNull {
+                fixUrlNull(
+                    it.attr("src")
+                        .ifBlank { it.attr("data-src") }
+                        .ifBlank { it.attr("data-litespeed-src") }
+                        .ifBlank { it.attr("href") }
+                )
+            }.distinct()
+
+            candidates.forEach { url ->
+                val lower = url.lowercase()
+                when {
+                    lower.contains(".m3u8") || lower.contains(".mp4") -> {
+                        found = true
+                        callback(
+                            newExtractorLink(
+                                source = name,
+                                name = name,
+                                url = url,
+                                type = INFER_TYPE
+                            ) {
+                                this.referer = data
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
+                    }
+                    lower.contains("embed") || lower.contains("player") || lower.contains("stream") || lower.contains("video") -> {
+                        found = loadExtractor(url, data, subtitleCallback, callback) || found
+                    }
+                }
+            }
+        }
+
+        return found
     }
 }
 

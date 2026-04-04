@@ -100,28 +100,50 @@ class Fxprnhd : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
 
-        val iframe = app.get(data).document.select("div.responsive-player iframe").attr("src")
+        val iframe = fixUrl(
+            app.get(data).document.select("div.responsive-player iframe").attr("src")
+        )
+
+        val candidates = linkedSetOf<String>()
+        candidates += iframe
 
         if (iframe.startsWith(mainUrl)) {
-            val video = app.get(iframe, referer = data).document.select("video source").attr("src")
-            callback.invoke(
-                newExtractorLink(
-                    source = this.name,
-                    name = this.name,
-                    url = video,
-                    type = INFER_TYPE
-                ) {
-                    this.referer = "$mainUrl/"
-                    this.quality = Qualities.Unknown.value
-                    this.headers = mapOf(
-                        "Range" to "bytes=0-"
-                    )
-                }
-            )
-        } else {
-            loadExtractor(iframe, "$mainUrl/", subtitleCallback, callback)
+            val iframeDoc = app.get(iframe, referer = data).document
+            candidates += iframeDoc.select("video source, video, source, iframe, a").mapNotNull {
+                fixUrlNull(
+                    it.attr("src")
+                        .ifBlank { it.attr("data-src") }
+                        .ifBlank { it.attr("data-litespeed-src") }
+                        .ifBlank { it.attr("href") }
+                )
+            }
         }
 
-        return true
+        var found = false
+        candidates.forEach { url ->
+            val lower = url.lowercase()
+            when {
+                lower.contains(".m3u8") || lower.contains(".mp4") -> {
+                    found = true
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = name,
+                            url = url,
+                            type = INFER_TYPE
+                        ) {
+                            this.referer = "$mainUrl/"
+                            this.quality = Qualities.Unknown.value
+                            this.headers = mapOf("Range" to "bytes=0-")
+                        }
+                    )
+                }
+                lower.contains("embed") || lower.contains("player") || lower.contains("stream") || lower.contains("video") -> {
+                    found = loadExtractor(url, "$mainUrl/", subtitleCallback, callback) || found
+                }
+            }
+        }
+
+        return found
     }
 }

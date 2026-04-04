@@ -84,19 +84,46 @@ class Pornmz : MainAPI() {
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data).document
-        val iframe = document.select(".responsive-player iframe").attr("src")
-        val source = app.get(iframe).document.select("video source").attr("src")
+        val iframe = fixUrlNull(document.select(".responsive-player iframe").attr("src"))
+        val candidates = linkedSetOf<String>()
 
-        callback.invoke(
-            newExtractorLink(
-                source = "Pornmz",
-                name = "Pornmz",
-                url = source
-            ) {
-                this.referer = mainUrl
-                this.quality = Qualities.Unknown.value
+        iframe?.let { iframeUrl ->
+            candidates += iframeUrl
+            val iframeDoc = app.get(iframeUrl, referer = data).document
+            candidates += iframeDoc.select("video source, video, source, iframe, a").mapNotNull {
+                fixUrlNull(
+                    it.attr("src")
+                        .ifBlank { it.attr("data-src") }
+                        .ifBlank { it.attr("data-litespeed-src") }
+                        .ifBlank { it.attr("href") }
+                )
             }
-        )
-        return true
+        }
+
+        var found = false
+        candidates.forEach { url ->
+            val lower = url.lowercase()
+            when {
+                lower.contains(".m3u8") || lower.contains(".mp4") -> {
+                    found = true
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = name,
+                            url = url,
+                            type = INFER_TYPE
+                        ) {
+                            this.referer = iframe ?: data
+                            this.quality = Qualities.Unknown.value
+                        }
+                    )
+                }
+                lower.contains("embed") || lower.contains("player") || lower.contains("stream") || lower.contains("video") -> {
+                    found = loadExtractor(url, data, subtitleCallback, callback) || found
+                }
+            }
+        }
+
+        return found
     }
 }

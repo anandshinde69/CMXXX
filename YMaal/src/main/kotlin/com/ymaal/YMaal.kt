@@ -57,9 +57,8 @@ class YMaal : MainAPI() {
         var title = doc.selectFirst("h1.video-title")?.text() ?: "$name"
         var description = doc.select("div.description").text().removePrefix("Description")
         var posterUrl = doc.select("meta[property^=og:image]").attr("content")
-        val streamLink = doc.selectFirst("video source")?.attr("src") ?: ""
         
-        return newMovieLoadResponse(title, url,TvType.Movie, streamLink) {
+        return newMovieLoadResponse(title, url,TvType.Movie, url) {
             this.posterUrl = posterUrl
             this.plot = description
         }
@@ -72,9 +71,42 @@ class YMaal : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         if (data.isEmpty()) return false
-        callback.invoke(
-            newExtractorLink("$name","$name",data)
-        )
-        return true
+        val doc = app.get(data).document
+        val candidates = linkedSetOf<String>()
+
+        candidates += doc.select("video source, video, iframe, source, a").mapNotNull {
+            fixUrlNull(
+                it.attr("src")
+                    .ifBlank { it.attr("data-src") }
+                    .ifBlank { it.attr("data-litespeed-src") }
+                    .ifBlank { it.attr("href") }
+            )
+        }
+
+        var found = false
+        candidates.forEach { url ->
+            val lower = url.lowercase()
+            when {
+                lower.contains(".m3u8") || lower.contains(".mp4") -> {
+                    found = true
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = name,
+                            url = url,
+                            type = INFER_TYPE
+                        ) {
+                            this.referer = data
+                            this.quality = Qualities.Unknown.value
+                        }
+                    )
+                }
+                lower.contains("embed") || lower.contains("player") || lower.contains("stream") || lower.contains("video") -> {
+                    found = loadExtractor(url, data, subtitleCallback, callback) || found
+                }
+            }
+        }
+
+        return found
     }
 }

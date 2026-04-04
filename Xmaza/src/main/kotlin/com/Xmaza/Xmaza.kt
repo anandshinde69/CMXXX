@@ -72,17 +72,41 @@ class Xmaza : MainAPI() {
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data).document
-        val source=document.selectFirst("#my-video source")?.attr("src") ?:""
-        callback.invoke(
-            newExtractorLink(
-                source = this.name,
-                name = this.name,
-                url = source
-            ) {
-                this.referer = data
-                this.quality = Qualities.Unknown.value
+        val candidates = linkedSetOf<String>()
+
+        candidates += document.select("#my-video source, #my-video, iframe, a").mapNotNull {
+            fixUrlNull(
+                it.attr("src")
+                    .ifBlank { it.attr("data-src") }
+                    .ifBlank { it.attr("data-litespeed-src") }
+                    .ifBlank { it.attr("href") }
+            )
+        }
+
+        var found = false
+        candidates.forEach { url ->
+            val lower = url.lowercase()
+            when {
+                lower.contains(".m3u8") || lower.contains(".mp4") -> {
+                    found = true
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = name,
+                            url = url,
+                            type = INFER_TYPE
+                        ) {
+                            this.referer = data
+                            this.quality = Qualities.Unknown.value
+                        }
+                    )
+                }
+                lower.contains("embed") || lower.contains("player") || lower.contains("stream") || lower.contains("video") -> {
+                    found = loadExtractor(url, data, subtitleCallback, callback) || found
+                }
             }
-        )
-        return true
+        }
+
+        return found
     }
 }

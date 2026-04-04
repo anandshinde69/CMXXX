@@ -80,19 +80,49 @@ class YesPornPlease : MainAPI() {
         ): Boolean {
 
         val document = app.get(data).document
-        val iframe = document.select("#post > div.wp-video > div > iframe").attr("data-litespeed-src")
-        val source = app.get(iframe).document.select("video a").attr("href")
-        callback.invoke(
-            newExtractorLink(
-                source = this.name,
-                name = this.name,
-                url = source
-            ) {
-                this.referer = mainUrl
-                this.quality = Qualities.Unknown.value
-            }
+        val iframe = fixUrlNull(
+            document.select("#post > div.wp-video > div > iframe").attr("data-litespeed-src")
+                .ifBlank { document.select("#post > div.wp-video > div > iframe").attr("src") }
         )
+        val candidates = linkedSetOf<String>()
 
-        return true
+        iframe?.let { iframeUrl ->
+            candidates += iframeUrl
+            val iframeDoc = app.get(iframeUrl, referer = data).document
+            candidates += iframeDoc.select("video a, video source, video, source, iframe, a").mapNotNull {
+                fixUrlNull(
+                    it.attr("href")
+                        .ifBlank { it.attr("src") }
+                        .ifBlank { it.attr("data-src") }
+                        .ifBlank { it.attr("data-litespeed-src") }
+                )
+            }
+        }
+
+        var found = false
+        candidates.forEach { url ->
+            val lower = url.lowercase()
+            when {
+                lower.contains(".m3u8") || lower.contains(".mp4") -> {
+                    found = true
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = name,
+                            url = url,
+                            type = INFER_TYPE
+                        ) {
+                            this.referer = iframe ?: data
+                            this.quality = Qualities.Unknown.value
+                        }
+                    )
+                }
+                lower.contains("embed") || lower.contains("player") || lower.contains("stream") || lower.contains("video") -> {
+                    found = loadExtractor(url, data, subtitleCallback, callback) || found
+                }
+            }
+        }
+
+        return found
     }
 }
