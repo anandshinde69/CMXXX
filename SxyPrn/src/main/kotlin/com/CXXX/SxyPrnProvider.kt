@@ -3,10 +3,9 @@ package com.CXXX
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
-import com.lagradost.cloudstream3.extractors.StreamTape
-import com.lagradost.cloudstream3.extractors.Lulustream1
-import com.lagradost.cloudstream3.extractors.Vidguardto
 import com.lagradost.cloudstream3.extractors.DoodstreamCom
+import com.lagradost.cloudstream3.extractors.Lulustream1
+import com.lagradost.cloudstream3.extractors.StreamTape
 
 
 @CloudstreamPlugin

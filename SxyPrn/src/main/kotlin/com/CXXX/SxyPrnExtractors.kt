@@ -1,8 +1,7 @@
-package com.megix
+package com.CXXX
 
 import android.annotation.SuppressLint
 import android.util.Log
-import com.lagradost.cloudstream3.extractors.DoodLaExtractor
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.AppUtils
@@ -16,10 +15,6 @@ import org.mozilla.javascript.NativeJSON
 import org.mozilla.javascript.NativeObject
 import org.mozilla.javascript.Scriptable
 import java.util.Base64
-
-class Dooodster : DoodLaExtractor() {
-    override var mainUrl = "https://dooodster.com"
-}
 
 open class Vidguardto : ExtractorApi() {
     override val name = "Vidguard"
@@ -89,7 +84,7 @@ open class Vidguardto : ExtractorApi() {
                 Context.toString(svg)
             }
         } catch (e: Exception) {
-            Log.e("Onlyjerk", "Error executing Vidguard JS", e)
+            Log.e("SxyPrn", "Error executing Vidguard JS", e)
             ""
         } finally {
             Context.exit()
@@ -100,12 +95,4 @@ open class Vidguardto : ExtractorApi() {
         val stream: String,
         val hash: String,
     )
-}
-
-class Listeamed : Vidguardto() {
-    override var mainUrl = "https://listeamed.net"
-}
-
-class Beamed : Vidguardto() {
-    override var mainUrl = "https://bembed.net"
 }
