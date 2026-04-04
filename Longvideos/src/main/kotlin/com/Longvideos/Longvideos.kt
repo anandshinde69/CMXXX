@@ -85,10 +85,13 @@ class Longvideos : MainAPI() {
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data).document
+        var found = false
 
         document.select("video.video-js > source").forEach {
             val url     = it.attr("src")
             val quality = it.attr("label").replace("p", "").toIntOrNull() ?: Qualities.Unknown.value
+            if (url.isBlank()) return@forEach
+            found = true
             callback.invoke(
                 newExtractorLink(
                     this.name,
@@ -101,6 +104,47 @@ class Longvideos : MainAPI() {
                 }
             )
         }
-        return true
+
+        if (!found) {
+            val candidateUrls = linkedSetOf<String>()
+
+            listOf(
+                "iframe[src]" to "src",
+                "iframe[data-src]" to "data-src",
+                "iframe[data-litespeed-src]" to "data-litespeed-src",
+                "source[src]" to "src",
+                "video[src]" to "src",
+                "a[href]" to "href",
+            ).forEach { (selector, attr) ->
+                document.select(selector).forEach { element ->
+                    val value = element.attr(attr)
+                    val normalized = when {
+                        value.isBlank() -> null
+                        value.startsWith("//") -> "https:$value"
+                        value.startsWith("/") -> fixUrl(value)
+                        value.startsWith("http") -> value
+                        else -> null
+                    }
+                    val looksPlayable = normalized?.let {
+                        val lower = it.lowercase()
+                        lower.contains(".m3u8") ||
+                            lower.contains(".mp4") ||
+                            lower.contains("embed") ||
+                            lower.contains("player") ||
+                            lower.contains("stream") ||
+                            lower.contains("dood") ||
+                            lower.contains("vidguard")
+                    } == true
+                    if (looksPlayable) candidateUrls.add(normalized!!)
+                }
+            }
+
+            candidateUrls.forEach { url ->
+                found = true
+                loadExtractor(url, data, subtitleCallback, callback)
+            }
+        }
+
+        return found
     }
 }
