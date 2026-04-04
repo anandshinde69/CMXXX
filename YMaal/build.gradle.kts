@@ -1,5 +1,10 @@
 // use an integer for version numbers
 version = 1
+
+android {
+    namespace = "com.megix"
+}
+
 cloudstream {
     description ="adult content"
     authors = listOf("rockhero1234")

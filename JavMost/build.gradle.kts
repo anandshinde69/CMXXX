@@ -1,6 +1,9 @@
 // use an integer for version numbers
 version = 6
 
+android {
+    namespace = "com.lagradost"
+}
 
 cloudstream {
     // All of these properties are optional, you can safely remove them

@@ -1,6 +1,9 @@
 // use an integer for version numbers
 version = 1
 
+android {
+    namespace = "com.hexated"
+}
 
 cloudstream {
     language = "en"

@@ -1,5 +1,9 @@
 version = 1
 
+android {
+    namespace = "com.Cam4"
+}
+
 cloudstream {
     authors     = listOf("Owen Cz")
     language    = "en"
