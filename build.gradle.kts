@@ -34,7 +34,7 @@ subprojects {
     apply(plugin = "com.lagradost.cloudstream3.gradle")
 
     cloudstream {
-        setRepo(System.getenv("GITHUB_REPOSITORY") ?: "https://github.com/anandshinde69/CXXX")
+        setRepo(System.getenv("GITHUB_REPOSITORY") ?: "https://github.com/anandshinde69/cmxxx")
         authors = listOf("Phisher98")
     }
 
