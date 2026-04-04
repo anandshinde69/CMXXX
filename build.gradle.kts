@@ -35,11 +35,11 @@ subprojects {
 
     cloudstream {
         setRepo(System.getenv("GITHUB_REPOSITORY") ?: "https://github.com/anandshinde69/CMXXX")
-        authors = listOf("Phisher98")
+        authors = listOf("CMXXX")
     }
 
     android {
-        namespace = "com.Phisher98"
+        namespace = "com.CMXXX"
 
         defaultConfig {
             minSdk = 21
