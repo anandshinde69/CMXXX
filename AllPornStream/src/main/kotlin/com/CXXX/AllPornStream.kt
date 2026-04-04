@@ -4,11 +4,16 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.fixUrl
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import org.jsoup.nodes.Document
 
 class AllPornStream : MainAPI() {
     override var mainUrl = "https://allpornstream.com"
@@ -37,11 +42,11 @@ class AllPornStream : MainAPI() {
     ): HomePageResponse {
         val doc = app.get("$mainUrl/?studio=${request.data}").document
         val videos = doc.select("div[data-thumb-id]").mapNotNull {
-            val title = it.attr("data-title") ?: return@mapNotNull null
-            val href = it.attr("data-href") ?: return@mapNotNull null
+            val title = it.attr("data-title").takeIf(String::isNotBlank) ?: return@mapNotNull null
+            val href = it.attr("data-href").takeIf(String::isNotBlank) ?: return@mapNotNull null
             val images = it.attr("data-images")
             val poster = images.split(",").firstOrNull()?.trim('"', '[', ']')?.takeIf { img -> img.startsWith("http") }
-            newMovieSearchResponse(title, href, TvType.NSFW) { this.posterUrl = poster }
+            newMovieSearchResponse(title, fixUrl(href), TvType.NSFW) { this.posterUrl = poster }
         }
         return newHomePageResponse(
             list = HomePageList(name = request.name, list = videos, isHorizontalImages = true),
@@ -54,24 +59,16 @@ class AllPornStream : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = app.get("$mainUrl$url").document
-        val title = doc.select("h1").text() ?: "Unknown"
-        val poster = doc.select("img[alt]").firstOrNull()?.attr("src")?.takeIf { it.startsWith("http") }
+        val targetUrl = fixUrl(url)
+        val doc = app.get(targetUrl).document
+        val title = doc.select("h1").text().ifBlank { doc.select("meta[property=og:title]").attr("content").ifBlank { "Unknown" } }
+        val poster = doc.select("meta[property=og:image]").attr("content")
+            .ifBlank { doc.select("img[alt], img[src]").firstOrNull()?.attr("src").orEmpty() }
+            .takeIf { it.isNotBlank() }
         val description = doc.select("meta[name=description]").attr("content")
-        val videos = mutableListOf<String>()
-        
-        try {
-            val downloadDoc = app.get("$mainUrl$url/download").document
-            videos.addAll(
-                downloadDoc.select("a[href*=.mp4], a[href*=.m3u8]")
-                    .map { it.attr("href") }
-                    .filter { it.isNotBlank() && it.startsWith("http") }
-            )
-        } catch (e: Exception) {
-            // Download page may not exist
-        }
+        val videos = extractCandidateUrls(targetUrl, doc)
 
-        return newMovieLoadResponse(title, url, TvType.NSFW, videos.toJson()) {
+        return newMovieLoadResponse(title, targetUrl, TvType.NSFW, SourcePayload(targetUrl, videos).toJson()) {
             this.posterUrl = poster
             this.plot = description
         }
@@ -83,7 +80,30 @@ class AllPornStream : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean = coroutineScope {
-        val videos = data.fromJson<List<String>>()
+        val payload = runCatching { data.fromJson<SourcePayload>() }.getOrNull()
+        val pageUrl = payload?.pageUrl
+        val videos = (payload?.urls ?: runCatching { data.fromJson<List<String>>() }.getOrDefault(emptyList()))
+            .ifEmpty { pageUrl?.let { extractCandidateUrls(it) } ?: emptyList() }
+            .distinct()
+
+        if (videos.isEmpty()) {
+            pageUrl?.let {
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = "$name Fallback",
+                        url = it,
+                        type = INFER_TYPE
+                    ) {
+                        referer = mainUrl
+                        quality = Qualities.Unknown.value
+                    }
+                )
+                return@coroutineScope true
+            }
+            return@coroutineScope false
+        }
+
         videos.map { url ->
             launch {
                 loadExtractor(url, mainUrl, subtitleCallback, callback)
@@ -91,6 +111,77 @@ class AllPornStream : MainAPI() {
         }.joinAll()
         true
     }
+
+    private suspend fun extractCandidateUrls(pageUrl: String, existingDoc: Document? = null): List<String> {
+        val urls = linkedSetOf<String>()
+        val pages = mutableListOf<Pair<Document, String>>()
+        val doc = existingDoc ?: app.get(pageUrl).document
+        pages += doc to pageUrl
+
+        runCatching {
+            val downloadUrl = if (pageUrl.endsWith("/download")) pageUrl else "$pageUrl/download"
+            pages += app.get(downloadUrl).document to downloadUrl
+        }
+
+        pages.forEach { (page, referer) ->
+            collectUrlsFromDocument(page, referer, urls)
+        }
+        return urls.toList()
+    }
+
+    private fun collectUrlsFromDocument(doc: Document, referer: String, output: MutableSet<String>) {
+        val attrSelectors = listOf(
+            "a[href]" to "href",
+            "iframe[src]" to "src",
+            "iframe[data-src]" to "data-src",
+            "iframe[data-litespeed-src]" to "data-litespeed-src",
+            "iframe[data-lp-src]" to "data-lp-src",
+            "source[src]" to "src",
+            "video[src]" to "src",
+            "[data-url]" to "data-url",
+        )
+
+        attrSelectors.forEach { (selector, attr) ->
+            doc.select(selector).mapNotNullTo(output) { element ->
+                normalizeCandidateUrl(element.attr(attr), referer)
+            }
+        }
+
+        val text = doc.html()
+        Regex("""https?:\/\/[^"'\\\s<]+""").findAll(text).forEach { match ->
+            normalizeCandidateUrl(match.value, referer)?.let(output::add)
+        }
+    }
+
+    private fun normalizeCandidateUrl(url: String, referer: String): String? {
+        val normalized = when {
+            url.isBlank() -> return null
+            url.startsWith("//") -> "https:$url"
+            url.startsWith("/") -> fixUrl(url)
+            else -> url
+        }
+
+        if (!normalized.startsWith("http")) return null
+        val lower = normalized.lowercase()
+        val looksPlayable = lower.contains(".m3u8") ||
+            lower.contains(".mp4") ||
+            lower.contains("streamtape") ||
+            lower.contains("bigwarp") ||
+            lower.contains("dood") ||
+            lower.contains("vidguard") ||
+            lower.contains("embed") ||
+            lower.contains("player") ||
+            lower.contains("download")
+
+        if (!looksPlayable) return null
+        if (normalized == referer) return null
+        return normalized
+    }
+
+    private data class SourcePayload(
+        val pageUrl: String,
+        val urls: List<String>,
+    )
 
     private val gson = Gson()
     private inline fun <reified T> String.fromJson(): T = gson.fromJson(this, object : TypeToken<T>() {}.type)
