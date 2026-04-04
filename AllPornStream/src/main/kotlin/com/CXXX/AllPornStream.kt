@@ -2,7 +2,6 @@ package com.CXXX
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
@@ -20,129 +19,61 @@ class AllPornStream : MainAPI() {
     override val supportedTypes = setOf(TvType.NSFW)
 
     override val mainPage = mainPageOf(
-        "studio=ElegantAngel" to "Elegant Angel",
-        "studio=Blacked" to "Blacked",
-        "studio=DadCrush" to "Dad Crush",
-        "studio=Shoplyfter" to "Shoplyfter",
-        "studio=Tushy" to "Tushy",
-        "studio=SisLovesMe" to "SisLovesMe",
-        "studio=OnlyTarts" to "OnlyTarts",
-        "studio=TouchMyWife" to "TouchMyWife",
-        "studio=FamilyTherapyXXX" to "FamilyTherapy",
-        "studio=PornFidelity" to "PornFidelity",
-        "studio=TeenFidelity" to "TeenFidelity",
-        "studio=MyLifeInMiami" to "MyLifeInMiami",
-        "studio=GangbangCreampie" to "GangbangCreampie",
-        "studio=FreeuseFantasy" to "FreeuseFantasy",
-        "studio=ExxxtraSmall" to "ExxxtraSmall",
-        "studio=SpankMonster" to "SpankMonster",
-        "studio=RealityJunkies" to "RealityJunkies",
-        "studio=RKPrime" to "RKPrime",
-        "studio=FreeuseMILF" to "FreeuseMILF",
-        "studio=MomComesFirst" to "MomComesFirst",
-        "studio=MySistersHotFriend" to "MySistersHotFriend",
-        "studio=MommyBlowsBest" to "MommyBlowsBest",
-        "studio=DaughterSwap" to "DaughterSwap",
-        "studio=PornForce" to "PornForce",
-        "studio=Slayed" to "Slayed",
-        "studio=MomSwap" to "Mom Swap",
-        "studio=BangRealTeens" to "BangRealTeens",
-        "studio=TeenyTaboo" to "TeenyTaboo",
-        "studio=MyBabysittersClub" to "MyBabysittersClub",
-        "studio=Hunt4K" to "Hunt4K",
-        "studio=PropertySex" to "PropertySex",
-        "studio=FamilyHookups" to "FamilyHookups",
-        "studio=MomIsHorny" to "MomIsHorny",
-        "studio=Hustler" to "Hustler",
-        "studio=SexMex" to "SexMex Studio",
-        "studio=BrazzersExxtra" to "BrazzersExxtra Studio",
-        "studio=EvilAngel" to "EvilAngel Studio",
-        "studio=PornWorld" to "PornWorld Studio",
-        "studio=DorcelClub" to "DorcelClub Studio",
-        "studio=TabooHeat" to "TabooHeat Studio",
-        "studio=MyPervyFamily" to "MyPervyFamily Studio",
-        "studio=BangBus" to "BangBus Studio",
-        "studio=PureTaboo" to "PureTaboo Studio",
-        "studio=PervMom" to "PervMom Studio",
-        "studio=NubileFilms" to "NubileFilms Studio",
-        "studio=FamilyStrokes" to "FamilyStrokes Studio",
-        "studio=BrattySis" to "BrattySis Studio",
-        "studio=MyFriendsHotMom" to "MyFriendsHotMom Studio",
-        "studio=SweetSinner" to "SweetSinner Studio",
-        "studio=FamilyXXX" to "FamilyXXX Studio",
-        "studio=StepSiblingsCaught" to "StepSiblingsCaught Studio",
-        "studio=japan-hdv" to "Japan HDV",
-        "studio=erito" to "Erito",
-        "studio=public-agent" to "Public Agent",
-        "studio=cum-4-k" to "Cum (4K)",
+        "ElegantAngel" to "Elegant Angel",
+        "Blacked" to "Blacked",
+        "DadCrush" to "Dad Crush",
+        "Shoplyfter" to "Shoplyfter",
+        "Tushy" to "Tushy",
+        "EvilAngel" to "Evil Angel",
+        "SexMex" to "Sex Mex",
+        "BrazzersExxtra" to "Brazzers Exxtra",
+        "PornWorld" to "Porn World",
+        "ATKGirlfriends" to "ATK Girlfriends",
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        val res = app.get("$mainUrl/api/posts?${request.data}&page=$page").parsedSafe<Posts>()?.posts
-        val home = res?.map {
-            it.toSearchResult()
+        val doc = app.get("$mainUrl/?studio=${request.data}").document
+        val videos = doc.select("div[data-thumb-id]").mapNotNull {
+            val title = it.attr("data-title") ?: return@mapNotNull null
+            val href = it.attr("data-href") ?: return@mapNotNull null
+            val images = it.attr("data-images")
+            val poster = images.split(",").firstOrNull()?.trim('"', '[', ']')?.takeIf { img -> img.startsWith("http") }
+            newMovieSearchResponse(title, href, TvType.NSFW) { this.posterUrl = poster }
         }
         return newHomePageResponse(
-            list = HomePageList(
-                name = request.name,
-                list = home!!,
-                isHorizontalImages = true
-            ),
-            hasNext = true
+            list = HomePageList(name = request.name, list = videos, isHorizontalImages = true),
+            hasNext = false
         )
     }
 
-    private fun PostMain.toSearchResult(): SearchResponse {
-        val title = this.videoTitle
-        val href = this.id
-        val posterUrl = this.imageDetails
-            .firstOrNull { it.startsWith("http") }
-        return newMovieSearchResponse(title, href, TvType.NSFW) {
-            this.posterUrl = posterUrl
-        }
-    }
-
-    private fun RelatedPost.toSearchResult(): SearchResponse {
-        val title = this.videoTitle
-        val href = this.slug
-        val posterUrl = this.imageDetails
-            .firstOrNull { it.startsWith("http") }
-        return newMovieSearchResponse(title, href, TvType.NSFW) {
-            this.posterUrl = posterUrl
-        }
-    }
-
     override suspend fun search(query: String): List<SearchResponse> {
-        val searchResponse = mutableListOf<SearchResponse>()
-        for (i in 1..3) {
-            val res = app.get("$mainUrl/api/posts?search=$query&page=$i").parsedSafe<Posts>()?.posts.orEmpty()
-            val results = res.map { it.toSearchResult() }
-            val newResults = results.filterNot { it in searchResponse }
-            searchResponse.addAll(newResults)
-            if (newResults.isEmpty()) break
-        }
-
-        return searchResponse
+        return emptyList()
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val res = app.get("$mainUrl/api/post?id=${url.substringAfterLast("/")}").parsedSafe<Load>()
-        val loaddata = res?.post
-        val title = loaddata?.videoTitle ?: "Unknown"
-        val poster = loaddata?.imageDetails
-            ?.firstOrNull { it.startsWith("http") }
-        val tags = loaddata?.categories?.map { it }
-        val description = loaddata?.videoDescription
-        val recommendations= res?.relatedPosts?.map { it.toSearchResult() }
-        val hrefs=res?.urls?.map { it.url }?.toJson()
-        return newMovieLoadResponse(title, url, TvType.NSFW, hrefs) {
+        val doc = app.get("$mainUrl$url").document
+        val title = doc.select("h1").text() ?: "Unknown"
+        val poster = doc.select("img[alt]").firstOrNull()?.attr("src")?.takeIf { it.startsWith("http") }
+        val description = doc.select("meta[name=description]").attr("content")
+        val videos = mutableListOf<String>()
+        
+        try {
+            val downloadDoc = app.get("$mainUrl$url/download").document
+            videos.addAll(
+                downloadDoc.select("a[href*=.mp4], a[href*=.m3u8]")
+                    .map { it.attr("href") }
+                    .filter { it.isNotBlank() && it.startsWith("http") }
+            )
+        } catch (e: Exception) {
+            // Download page may not exist
+        }
+
+        return newMovieLoadResponse(title, url, TvType.NSFW, videos.toJson()) {
             this.posterUrl = poster
             this.plot = description
-            this.tags = tags
-            this.recommendations = recommendations
         }
     }
 
@@ -152,17 +83,15 @@ class AllPornStream : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean = coroutineScope {
-        val parsedList = data.fromJson<List<String>>()
-        parsedList.map { url ->
+        val videos = data.fromJson<List<String>>()
+        videos.map { url ->
             launch {
-                Log.d("Phisher", url)
-                loadExtractor(url, "$mainUrl/", subtitleCallback, callback)
+                loadExtractor(url, mainUrl, subtitleCallback, callback)
             }
         }.joinAll()
-
         true
     }
 
-    val gson = Gson()
+    private val gson = Gson()
     private inline fun <reified T> String.fromJson(): T = gson.fromJson(this, object : TypeToken<T>() {}.type)
 }
