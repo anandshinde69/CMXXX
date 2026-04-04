@@ -1,0 +1,8 @@
+{
+  "name": "CMXXX",
+  "description": "CMXXX Repository",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/anandshinde69/CMXXX/builds/plugins.json"
+  ]
+}
