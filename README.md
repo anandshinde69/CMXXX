@@ -1,6 +1,13 @@
 
 Shortcode: PhisherCXX
 
+Build notes:
+- Keep the source code on `master` or `main`.
+- Let GitHub Actions publish generated `.cs3` files and `plugins.json` to the `builds` branch.
+- Use JDK 17 for local Gradle builds. The current toolchain in this workspace is Java 25, which breaks the Kotlin/Gradle setup before configuration.
+- Configure `ANDROID_HOME` or `local.properties` before running packaging tasks locally. GitHub Actions handles the Android SDK setup automatically.
+- Add this manifest in Cloudstream after the first successful build: `https://raw.githubusercontent.com/anandshinde69/CMXXX/builds/CMXXX.json`
+
 ## 🌐 Plugin Servers
 
 ### 🔹 Phisher Cloudstream Plugin Server
