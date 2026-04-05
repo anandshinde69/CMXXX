@@ -49,10 +49,14 @@ class DarknessPorn : MainAPI() {
         val description = document.selectFirst("meta[property=og:description]")?.attr("content")
             ?: document.selectFirst("meta[name=description]")?.attr("content")
             ?: document.selectFirst("p")?.text()
+        val recommendations = document.extractCards()
+            .filter { it.url != url }
+            .take(24)
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot = description
+            this.recommendations = recommendations
         }
     }
 
