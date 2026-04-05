@@ -3,6 +3,7 @@ package com.megix
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 
 class Longvideos : MainAPI() {
     override var mainUrl              = "https://www.longporn.com"
@@ -81,7 +82,17 @@ class Longvideos : MainAPI() {
 
         val title       = document.select("meta[property=og:title]").attr("content")
         val poster      = document.select("meta[property='og:image']").attr("content")
+            .ifBlank { document.select("meta[name=thumbnail]").attr("content") }
+            .ifBlank { document.select("video[poster]").attr("poster") }
+            .ifBlank { document.select("div.entry-content img, article img").firstOrNull()?.attr("src").orEmpty() }
+            .ifBlank {
+                document.select("script[type=application/ld+json]")
+                    .mapNotNull { tryParseJson<LinkedDataVideo>(it.data())?.thumbnailUrl }
+                    .firstOrNull()
+                    .orEmpty()
+            }
         val description = document.select("meta[property=og:description]").attr("content")
+            .ifBlank { document.select("meta[name=description]").attr("content") }
 
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
@@ -95,7 +106,7 @@ class Longvideos : MainAPI() {
         var found = false
 
         val directSources = linkedSetOf<Pair<String, Int>>()
-        document.select("video.video-js > source, #video > source, video source, source[src]").forEach {
+        document.select("video.video-js > source, #video > source, video source, source[src], video[src]").forEach {
             val url     = it.attr("src")
             val quality = it.attr("label").replace("p", "").toIntOrNull() ?: Qualities.Unknown.value
             if (url.isBlank()) return@forEach
@@ -174,4 +185,8 @@ class Longvideos : MainAPI() {
 
         return found
     }
+
+    data class LinkedDataVideo(
+        val thumbnailUrl: String? = null,
+    )
 }
