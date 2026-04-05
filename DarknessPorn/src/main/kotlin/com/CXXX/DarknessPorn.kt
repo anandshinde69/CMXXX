@@ -16,11 +16,11 @@ class DarknessPorn : MainAPI() {
 
     override val mainPage = mainPageOf(
         "" to "Latest",
-        "/category/asian/" to "Asian",
-        "/category/big-tits/" to "Big Tits",
-        "/category/blowjob/" to "Blowjob",
-        "/category/milf/" to "MILF",
-        "/category/threesome/" to "Threesome",
+        "/118-bdsm/" to "BDSM",
+        "/80649-painal/" to "Painal",
+        "/80651-femdom/" to "Femdom",
+        "/3-horror-porn/" to "Horror",
+        "/80650-piss/" to "Piss",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest) =
@@ -121,6 +121,8 @@ class DarknessPorn : MainAPI() {
 
     private fun Document.extractCards(): List<SearchResponse> {
         val selectors = listOf(
+            "div.video-block",
+            "div.video-loop div.video-block",
             "article",
             "div.item",
             "div.post",
@@ -137,17 +139,22 @@ class DarknessPorn : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val anchor = if (tagName() == "a") this else selectFirst("a[href]") ?: return null
+        val anchor = when {
+            hasClass("video-block") -> selectFirst("a.thumb[href], a.infos[href]")
+            tagName() == "a" -> this
+            else -> selectFirst("a[href]")
+        } ?: return null
         val href = fixUrlNull(anchor.attr("href")) ?: return null
 
         val title = sequenceOf(
             anchor.attr("title"),
+            selectFirst("a.infos h2, a.infos h3, h2 a, h3 a")?.text(),
             selectFirst("h1, h2, h3, h4, .title, .entry-title")?.text(),
             selectFirst("img")?.attr("alt")
         ).firstOrNull { !it.isNullOrBlank() }?.trim() ?: return null
 
         val poster = fixUrlNull(
-            selectFirst("img, video")?.imageAttr()
+            selectFirst("img.video-img, img.mobile-cat-img, img, video")?.imageAttr()
                 ?: anchor.selectFirst("img, video")?.imageAttr()
         )
 

@@ -5,7 +5,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 
 class Longvideos : MainAPI() {
-    override var mainUrl              = "https://www.longvideos.xxx"
+    override var mainUrl              = "https://www.longporn.com"
     override var name                 = "Longvideos"
     override val hasMainPage          = true
     override var lang                 = "en"
@@ -15,16 +15,22 @@ class Longvideos : MainAPI() {
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
     override val mainPage = mainPageOf(
-        "latest-updates" to "Latest",
-        "networks/brazzers-com/latest-updates" to "Brazzers",
-        "networks/tushy-com/latest-updates" to "Tushy",
-        "networks/blacked/latest-updates" to "Blacked",
-        "sites/dorcel-club/latest-updates" to "Dorcel",
+        "" to "Latest",
+        "page/1/views/week" to "Most Viewed",
+        "free-videos/anal" to "Anal",
+        "video/tag/milf" to "MILF",
+        "free-videos/casting" to "Casting",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("$mainUrl/${request.data}/$page/").document
-        val home     = document.select("div.list-videos div.item").mapNotNull { it.toSearchResult() }
+        val section = request.data.trim('/')
+        val targetUrl = when {
+            section.isBlank() -> if (page <= 1) mainUrl else "$mainUrl/page/$page/"
+            section.startsWith("page/") -> "$mainUrl/$section/"
+            else -> "$mainUrl/$section/${if (page <= 1) "" else "page/$page/"}"
+        }
+        val document = app.get(targetUrl).document
+        val home     = document.select("div.item").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
                 list    = HomePageList(
@@ -37,12 +43,13 @@ class Longvideos : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse {
-        val title     = this.select("a").attr("title")
-        val href      = this.select("a").attr("href")
-        var posterUrl = this.select("img").attr("src")
+        val anchor    = this.selectFirst("a.img, h3 a, a[href]")!!
+        val title     = anchor.attr("title").ifBlank { this.selectFirst("h3 a")?.text().orEmpty() }
+        val href      = anchor.attr("href")
+        var posterUrl = this.selectFirst("img")?.attr("src").orEmpty()
 
         if(posterUrl.contains("data:image")) {
-            posterUrl = this.select("img").attr("data-src")
+            posterUrl = this.selectFirst("img")?.attr("data-src").orEmpty()
         }
 
         return newMovieSearchResponse(title, href, TvType.NSFW) {
@@ -54,8 +61,8 @@ class Longvideos : MainAPI() {
         val searchResponse = mutableListOf<SearchResponse>()
 
         for (i in 1..7) {
-            val document = app.get("$mainUrl/search/$i/?q=$query").document
-            val results  = document.select("div.list-videos div.item").mapNotNull { it.toSearchResult() }
+            val document = app.get("$mainUrl/page/$i/?s=$query").document
+            val results  = document.select("div.item").mapNotNull { it.toSearchResult() }
 
             if (!searchResponse.containsAll(results)) {
                 searchResponse.addAll(results)
