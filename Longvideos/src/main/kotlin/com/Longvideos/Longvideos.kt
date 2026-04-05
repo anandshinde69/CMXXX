@@ -140,8 +140,23 @@ class Longvideos : MainAPI() {
             }
 
             candidateUrls.forEach { url ->
-                found = true
-                loadExtractor(url, data, subtitleCallback, callback)
+                val lower = url.lowercase()
+                if (lower.contains(".m3u8") || lower.contains(".mp4") || lower.contains(".mkv")) {
+                    found = true
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = name,
+                            url = url,
+                            type = INFER_TYPE
+                        ) {
+                            this.quality = Qualities.Unknown.value
+                            this.referer = data
+                        }
+                    )
+                } else {
+                    found = loadExtractor(url, data, subtitleCallback, callback) || found
+                }
             }
         }
 

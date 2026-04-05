@@ -106,7 +106,22 @@ class AllPornStream : MainAPI() {
 
         videos.map { url ->
             launch {
-                loadExtractor(url, mainUrl, subtitleCallback, callback)
+                val lower = url.lowercase()
+                if (lower.contains(".m3u8") || lower.contains(".mp4") || lower.contains(".mkv")) {
+                    callback(
+                        newExtractorLink(
+                            source = name,
+                            name = name,
+                            url = url,
+                            type = INFER_TYPE
+                        ) {
+                            referer = pageUrl ?: mainUrl
+                            quality = Qualities.Unknown.value
+                        }
+                    )
+                } else {
+                    loadExtractor(url, pageUrl ?: mainUrl, subtitleCallback, callback)
+                }
             }
         }.joinAll()
         true
@@ -165,12 +180,15 @@ class AllPornStream : MainAPI() {
         val lower = normalized.lowercase()
         val looksPlayable = lower.contains(".m3u8") ||
             lower.contains(".mp4") ||
+            lower.contains(".mkv") ||
             lower.contains("streamtape") ||
             lower.contains("bigwarp") ||
             lower.contains("dood") ||
             lower.contains("vidguard") ||
             lower.contains("embed") ||
             lower.contains("player") ||
+            lower.contains("watch") ||
+            lower.contains("file=") ||
             lower.contains("download")
 
         if (!looksPlayable) return null
