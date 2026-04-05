@@ -133,9 +133,13 @@ class AllPornStream : MainAPI() {
         val doc = existingDoc ?: app.get(pageUrl).document
         pages += doc to pageUrl
 
+        extractUrlsFromNextData(doc.html()).forEach(urls::add)
+
         runCatching {
             val downloadUrl = if (pageUrl.endsWith("/download")) pageUrl else "$pageUrl/download"
-            pages += app.get(downloadUrl).document to downloadUrl
+            val downloadDoc = app.get(downloadUrl).document
+            pages += downloadDoc to downloadUrl
+            extractUrlsFromNextData(downloadDoc.html()).forEach(urls::add)
         }
 
         pages.forEach { (page, referer) ->
@@ -166,6 +170,36 @@ class AllPornStream : MainAPI() {
         Regex("""https?:\/\/[^"'\\\s<]+""").findAll(text).forEach { match ->
             normalizeCandidateUrl(match.value, referer)?.let(output::add)
         }
+    }
+
+    private fun extractUrlsFromNextData(html: String): List<String> {
+        val urls = linkedSetOf<String>()
+        val patterns = listOf(
+            Regex("""https?:\\?/\\?/[^"\\]+"""),
+            Regex(""""embed_url\\":\\"(https?:\\\\/\\\\/[^"]+)""""),
+            Regex(""""link\\":\\[(.*?)\]"""),
+        )
+
+        patterns.forEach { regex ->
+            regex.findAll(html).forEach { match ->
+                match.groupValues.drop(1).ifEmpty { listOf(match.value) }.forEach { value ->
+                    Regex("""https?:\\?/\\?/[^"'\\\s<\]]+""").findAll(value).forEach { nested ->
+                        normalizeEscapedUrl(nested.value)?.let(urls::add)
+                    }
+                }
+            }
+        }
+
+        return urls.toList()
+    }
+
+    private fun normalizeEscapedUrl(raw: String): String? {
+        val cleaned = raw
+            .replace("\\u0026", "&")
+            .replace("\\/", "/")
+            .replace("\\\\", "")
+            .trim('"')
+        return normalizeCandidateUrl(cleaned, "")
     }
 
     private fun normalizeCandidateUrl(url: String, referer: String): String? {

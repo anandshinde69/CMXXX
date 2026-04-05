@@ -30,7 +30,7 @@ class Longvideos : MainAPI() {
             else -> "$mainUrl/$section/${if (page <= 1) "" else "page/$page/"}"
         }
         val document = app.get(targetUrl).document
-        val home     = document.select("div.item").mapNotNull { it.toSearchResult() }
+        val home     = document.select("div.entry.videothumb, div.entry.flipbook").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
                 list    = HomePageList(
@@ -62,7 +62,7 @@ class Longvideos : MainAPI() {
 
         for (i in 1..7) {
             val document = app.get("$mainUrl/page/$i/?s=$query").document
-            val results  = document.select("div.item").mapNotNull { it.toSearchResult() }
+            val results  = document.select("div.entry.videothumb, div.entry.flipbook").mapNotNull { it.toSearchResult() }
 
             if (!searchResponse.containsAll(results)) {
                 searchResponse.addAll(results)
@@ -94,10 +94,16 @@ class Longvideos : MainAPI() {
         val document = app.get(data).document
         var found = false
 
-        document.select("video.video-js > source").forEach {
+        val directSources = linkedSetOf<Pair<String, Int>>()
+        document.select("video.video-js > source, #video > source, video source, source[src]").forEach {
             val url     = it.attr("src")
             val quality = it.attr("label").replace("p", "").toIntOrNull() ?: Qualities.Unknown.value
             if (url.isBlank()) return@forEach
+            if (!url.startsWith("http")) return@forEach
+            directSources += url to quality
+        }
+
+        directSources.distinctBy { it.first }.forEach { (url, quality) ->
             found = true
             callback.invoke(
                 newExtractorLink(
@@ -119,8 +125,6 @@ class Longvideos : MainAPI() {
                 "iframe[src]" to "src",
                 "iframe[data-src]" to "data-src",
                 "iframe[data-litespeed-src]" to "data-litespeed-src",
-                "source[src]" to "src",
-                "video[src]" to "src",
                 "a[href]" to "href",
             ).forEach { (selector, attr) ->
                 document.select(selector).forEach { element ->
@@ -136,6 +140,7 @@ class Longvideos : MainAPI() {
                         val lower = it.lowercase()
                         lower.contains(".m3u8") ||
                             lower.contains(".mp4") ||
+                            lower.contains("eporner.com/embed") ||
                             lower.contains("embed") ||
                             lower.contains("player") ||
                             lower.contains("stream") ||
