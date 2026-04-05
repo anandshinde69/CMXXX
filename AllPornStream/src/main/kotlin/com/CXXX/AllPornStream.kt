@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.utils.fixUrl
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.network.CloudflareKiller
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -22,6 +23,7 @@ class AllPornStream : MainAPI() {
     override val hasDownloadSupport = true
     override val vpnStatus = VPNStatus.MightBeNeeded
     override val supportedTypes = setOf(TvType.NSFW)
+    private val cfInterceptor = CloudflareKiller()
 
     override val mainPage = mainPageOf(
         "ElegantAngel" to "Elegant Angel",
@@ -40,14 +42,13 @@ class AllPornStream : MainAPI() {
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        val doc = app.get("$mainUrl/?studio=${request.data}").document
-        val videos = doc.select("div[data-thumb-id]").mapNotNull {
-            val title = it.attr("data-title").takeIf(String::isNotBlank) ?: return@mapNotNull null
-            val href = it.attr("data-href").takeIf(String::isNotBlank) ?: return@mapNotNull null
-            val images = it.attr("data-images")
-            val poster = images.split(",").firstOrNull()?.trim('"', '[', ']')?.takeIf { img -> img.startsWith("http") }
-            newMovieSearchResponse(title, fixUrl(href), TvType.NSFW) { this.posterUrl = poster }
-        }
+        val response = app.get(
+            "$mainUrl/?studio=${request.data}",
+            referer = mainUrl,
+            interceptor = cfInterceptor,
+        )
+        val doc = response.document
+        val videos = parseHomeCards(doc).ifEmpty { parseHomeCardsFromHtml(response.text) }
         return newHomePageResponse(
             list = HomePageList(name = request.name, list = videos, isHorizontalImages = true),
             hasNext = false
@@ -60,7 +61,7 @@ class AllPornStream : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val targetUrl = fixUrl(url)
-        val doc = app.get(targetUrl).document
+        val doc = app.get(targetUrl, referer = mainUrl, interceptor = cfInterceptor).document
         val title = doc.select("h1").text().ifBlank { doc.select("meta[property=og:title]").attr("content").ifBlank { "Unknown" } }
         val poster = doc.select("meta[property=og:image]").attr("content")
             .ifBlank { doc.select("img[alt], img[src]").firstOrNull()?.attr("src").orEmpty() }
@@ -130,14 +131,14 @@ class AllPornStream : MainAPI() {
     private suspend fun extractCandidateUrls(pageUrl: String, existingDoc: Document? = null): List<String> {
         val urls = linkedSetOf<String>()
         val pages = mutableListOf<Pair<Document, String>>()
-        val doc = existingDoc ?: app.get(pageUrl).document
+        val doc = existingDoc ?: app.get(pageUrl, referer = mainUrl, interceptor = cfInterceptor).document
         pages += doc to pageUrl
 
         extractUrlsFromNextData(doc.html()).forEach(urls::add)
 
         runCatching {
             val downloadUrl = if (pageUrl.endsWith("/download")) pageUrl else "$pageUrl/download"
-            val downloadDoc = app.get(downloadUrl).document
+            val downloadDoc = app.get(downloadUrl, referer = pageUrl, interceptor = cfInterceptor).document
             pages += downloadDoc to downloadUrl
             extractUrlsFromNextData(downloadDoc.html()).forEach(urls::add)
         }
@@ -146,6 +147,48 @@ class AllPornStream : MainAPI() {
             collectUrlsFromDocument(page, referer, urls)
         }
         return urls.toList()
+    }
+
+    private fun parseHomeCards(doc: Document): List<SearchResponse> {
+        return doc.select("div[data-thumb-id]").mapNotNull { element ->
+            val title = element.attr("data-title").takeIf(String::isNotBlank) ?: return@mapNotNull null
+            val href = element.attr("data-href").takeIf(String::isNotBlank) ?: return@mapNotNull null
+            val poster = extractPosterFromImages(element.attr("data-images"))
+            newMovieSearchResponse(title, fixUrl(href), TvType.NSFW) {
+                this.posterUrl = poster
+            }
+        }
+    }
+
+    private fun parseHomeCardsFromHtml(html: String): List<SearchResponse> {
+        val cards = linkedMapOf<String, SearchResponse>()
+        val cardRegex = Regex(
+            """data-thumb-id\\":\\"[^"]+\\".*?data-href\\":\\"([^"]+)\\".*?data-title\\":\\"([^"]+)\\".*?data-images\\":\\"(\[[^"]*])""",
+            setOf(RegexOption.DOT_MATCHES_ALL)
+        )
+
+        cardRegex.findAll(html).forEach { match ->
+            val href = normalizeEscapedUrl(match.groupValues[1]) ?: return@forEach
+            val title = match.groupValues[2]
+                .replace("\\u0026", "&")
+                .replace("\\/", "/")
+                .replace("\\\\", "")
+                .takeIf(String::isNotBlank)
+                ?: return@forEach
+            val poster = extractPosterFromImages(
+                match.groupValues[3]
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "")
+            )
+            cards[href] = newMovieSearchResponse(title, fixUrl(href), TvType.NSFW) {
+                this.posterUrl = poster
+            }
+        }
+        return cards.values.toList()
+    }
+
+    private fun extractPosterFromImages(images: String): String? {
+        return Regex("""https?:\/\/[^"'\\\s\]]+""").find(images)?.value
     }
 
     private fun collectUrlsFromDocument(doc: Document, referer: String, output: MutableSet<String>) {
